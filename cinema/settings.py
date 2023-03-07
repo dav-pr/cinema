@@ -40,7 +40,7 @@ INSTALLED_APPS = [
     "django.contrib.sessions",
     "django.contrib.messages",
     "django.contrib.staticfiles",
-    "base"
+    "base",
 ]
 
 MIDDLEWARE = [
@@ -85,6 +85,9 @@ DATABASES = {
         'PASSWORD': config('DB_PASSWORD'),
         'HOST': 'localhost',
         'PORT': '',
+        'TEST': {
+            'NAME': 'cinemadb_test',
+        },
     }
 }
 
@@ -106,9 +109,8 @@ AUTH_PASSWORD_VALIDATORS = [
 # Internationalization
 # https://docs.djangoproject.com/en/4.1/topics/i18n/
 
-LANGUAGE_CODE = "en-us"
-
-TIME_ZONE = "UTC"
+LANGUAGE_CODE = "uk"
+TIME_ZONE = 'Europe/Kiev'
 
 USE_I18N = True
 
