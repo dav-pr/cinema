@@ -1,5 +1,6 @@
 from django.db import models
 from django.utils.text import slugify
+from unidecode import unidecode
 
 
 # Create your models here.
@@ -29,7 +30,9 @@ class Cinema(models.Model):
 
     def save(self, *args, **kwargs):
         "метод створює слаг-атрибут з імені кінотеатру"
-        self.slug = slugify(self.name)
+        if self.address == '':
+            raise ValueError
+        self.slug = slugify(unidecode(self.name))
         super().save(*args, **kwargs)
 
     def __init__(self, *args, **kwargs) -> None:
@@ -43,14 +46,20 @@ class Cinema(models.Model):
         :param args:
         :param kwargs: має містити параметри "name" та "address"
         """
-        name = kwargs.get('name', '').lower()
-        address = kwargs.get('address', '').lower()
+
+        name_loc = kwargs.get('name', '')
+        address_loc = kwargs.get('address', '')
+        if not isinstance(name_loc, str) or not isinstance(address_loc, str):
+            raise ValueError
+        name_loc = name_loc.lower()
+        address_loc = address_loc.lower()
+
         # Перевірка наявності дублікатів
-        if name != '' and address !='':
+        if name_loc != '' and address_loc !='':
             for el in Cinema.objects.all():
                 name_inst=str(el.name)
                 address_inst=str(el.address)
-                if name_inst.lower() == name or address_inst.lower() == address:
+                if name_inst.lower() == name_loc or address_inst.lower() == address_loc:
                     raise IntegrityError('UNIQUE constraint')
         super().__init__(*args, **kwargs)
 
@@ -81,8 +90,19 @@ class Hall(models.Model):
                 capacity += 1
         return capacity
 
+    def __str__(self):
+        return f'Зал: {self.name}'
+
+
 
 class Raw(models.Model):
+    """
+    Клас реалізує сутність категорії "ряд в залі кінотеатру"
+    Клас має такі атрибути:
+    number: номер ряду.
+    hall: зал, у якому розташований ряд.
+    Параметром unique_together = ('number', 'hall') забезпечується унікальність номера ряду у залі кінотеатру
+    """
     number = models.PositiveIntegerField()
     hall = models.ForeignKey(Hall, on_delete=models.CASCADE)
 
@@ -95,7 +115,15 @@ class Raw(models.Model):
     def __str__(self):
         return f"Ряд: {self.number}"
 
-    def add_sets(self, num, obj):
+
+
+    def add_link_obj(self, num, obj):
+        """
+        Метод створює кількість num об'єктів класу obj, які пов'язані з рядом self.
+        :param num: кількість об'єктів, які необхідно створити.
+        :param obj: клас об'єкту, який створюється
+        :return: у випадку вдалого відпрацювання повертає кількість створених об'єктів.
+        """
         for idx in range(1, num + 1):
             obj.objects.create(number = idx, raw = self)
         return num
@@ -115,7 +143,7 @@ class Seats(models.Model):
         res = str(self.raw.hall.cinema)
         res += str(self.raw.hall)
         res += str(self.raw)
-        res += str(super())
+        res += f"Місце: {self.number}"
         return res
 
 # class PriceZone(models.Model):

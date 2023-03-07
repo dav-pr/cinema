@@ -1,4 +1,7 @@
+from django.core.exceptions import ValidationError
 from django.db import transaction
+from unidecode import unidecode
+from django.utils.text import slugify
 from django.test import TestCase
 
 # Create your tests here.
@@ -135,9 +138,9 @@ class HallModelTestCase(TestCase):
         hall = Hall.objects.create(name = 'Зал 1', cinema = self.cinema)
         # Створення екземпляру моделі Raw з допустимими даними та прив'язка до залу
         raw0 = Raw.objects.create(number = 1, hall = hall)
-        raw0.add_sets(10, Seats)
+        raw0.add_link_obj(10, Seats)
         raw1 = Raw.objects.create(number = 2, hall = hall)
-        raw1.add_sets(3, Seats)
+        raw1.add_link_obj(3, Seats)
 
         # Перевірка того, що метод capacity повертає очікувану ємність залу
         self.assertEqual(hall.capacity(), 13)
@@ -163,8 +166,8 @@ class HallModelTestCase(TestCase):
 class HallModelUniqueTestCase(TestCase):
 
     def setUp(self):
-        self.cinema1 = Cinema.objects.create(name='Кінотеатр 1')
-        self.cinema2 = Cinema.objects.create(name='Кінотеатр 2')
+        self.cinema1 = Cinema.objects.create(name='Кінотеатр 1', address='вул. Богдана Хмельницького, 24')
+        self.cinema2 = Cinema.objects.create(name='Кінотеатр 2', address='вул. Богдана Хмельницького, 34')
         self.hall1 = Hall.objects.create(name='Зал 1', cinema=self.cinema1)
 
     def test_unique_together(self):
@@ -183,8 +186,8 @@ class HallModelUniqueTestCase(TestCase):
 class RawModelUniqueTest(TestCase):
 
     def setUp(self):
-        self.cinema = Cinema.objects.create(name='Кінотеатр')
-        self.cinema1 = Cinema.objects.create(name='Кінотеатр 1')
+        self.cinema = Cinema.objects.create(name='Кінотеатр', address='вул. Богдана Хмельницького, 24')
+        self.cinema1 = Cinema.objects.create(name='Кінотеатр 1', address='вул. Богдана Хмельницького, 34')
         self.hall = Hall.objects.create(name='Зал', cinema=self.cinema)
         self.hall1 = Hall.objects.create(name='Зал', cinema=self.cinema1)
         self.raw1 = Raw.objects.create(number=1, hall=self.hall)
@@ -217,14 +220,14 @@ class RawModelUniqueTest(TestCase):
 class RawModelBaseTest(TestCase):
 
     def setUp(self):
-        self.cinema = Cinema.objects.create(name='Кінотеатр')
+        self.cinema = Cinema.objects.create(name='Кінотеатр', address='вул. Богдана Хмельницького, 24')
         self.hall = Hall.objects.create(name='Зал', cinema=self.cinema)
         self.raw = Raw.objects.create(number=1, hall=self.hall)
 
     def test_add_sets(self):
         # Перевіряємо, що можна створити набір місць для ряду
         num = 5
-        sets = self.raw.add_sets(num, Seats)
+        sets = self.raw.add_link_obj(num, Seats)
         self.assertEqual(sets, num)
 
         # Перевіряємо, що місця були створені для відповідного ряду
@@ -247,12 +250,46 @@ from .models import Seats, Raw, Hall, Cinema
 class SeatsModelTest(TestCase):
 
     def setUp(self):
-        self.cinema = Cinema.objects.create(name='Кінотеатр')
-        self.hall = Hall.objects.create(name='Зал', cinema=self.cinema)
+        self.cinema = Cinema.objects.create(name='Кінотеатр',address='вул. Богдана Хмельницького, 24')
+        self.hall = Hall.objects.create(name='Червоний', cinema=self.cinema)
         self.raw = Raw.objects.create(number=1, hall=self.hall)
         self.seat = Seats.objects.create(number=1, raw=self.raw)
 
     def test_str(self):
         # Перевіряємо, що метод __str__ повертає очікуваний рядок
-        expected_str = str(self.cinema) + str(self.hall) + str(self.raw) + str(self.seat.number)
+        expected_str = str(self.cinema) + str(self.hall) + str(self.raw) + f"Місце: {self.seat.number}"
         self.assertEqual(str(self.seat), expected_str)
+
+class CinemaModelRequaedTestCase(TestCase):
+    def setUp(self):
+        self.cinema = Cinema.objects.create(
+            name='Кінотеатр "Україна"',
+            address='вул. Хрещатик, 22'
+        )
+
+    def test_cinema_name_field_is_required(self):
+
+        with self.assertRaises(ValueError):
+            cinema = Cinema(name=None, address='вул. Хрещатик, 22')
+            cinema.full_clean()
+
+    def test_cinema_address_field_is_required(self):
+
+        with self.assertRaises(ValueError):
+            cinema = Cinema(name='Кінотеатр "Україна"', address=None)
+            cinema.full_clean()
+
+    def test_cinema_fields_are_not_blank(self):
+
+        with self.assertRaises(ValidationError):
+            cinema = Cinema(name='', address='')
+            cinema.full_clean()
+
+    def test_cinema_object_creation(self):
+        self.assertEqual(Cinema.objects.count(), 1)
+        self.assertEqual(self.cinema.name, 'Кінотеатр "Україна"')
+        self.assertEqual(self.cinema.address, 'вул. Хрещатик, 22')
+
+    def test_slug_field_is_created_on_save(self):
+        cinema = Cinema.objects.create(name="Кінотеатр Імакс", address="вул. Шевченка 1")
+        self.assertEqual(cinema.slug, slugify(unidecode(cinema.name)))
