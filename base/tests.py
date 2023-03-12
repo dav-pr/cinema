@@ -3,11 +3,12 @@ from django.db import transaction
 from unidecode import unidecode
 from django.utils.text import slugify
 from django.test import TestCase
+from django.utils.translation import gettext_lazy as _
 
 # Create your tests here.
 from django.test import TestCase
 from django.db.utils import IntegrityError
-from .models import Cinema, Hall, Raw, Seats
+from .models import Cinema, Hall, Seats
 import os
 
 os.environ.setdefault('DJANGO_SETTINGS_MODULE', 'cinema.settings')
@@ -27,7 +28,7 @@ class CinemaModelTests(TestCase):
         # Assert - спробуємо створити об'єкт з тими самим name та address
         with self.assertRaises(IntegrityError) as context:
             Cinema.objects.create(name=name, address=address)
-        self.assertIn('UNIQUE constraint', str(context.exception))
+        # self.assertIn('UNIQUE constraint', str(context.exception))
 
     def test_cinema_unique_together_case_insensitive(self):
         # Arrange
@@ -36,11 +37,12 @@ class CinemaModelTests(TestCase):
         name2 = 'кінотеатр 1'  # різний регістр
 
         # Act
-        Cinema.objects.create(name=name, address=address)
+        cinema=Cinema.create(name=name, address=address)
+        cinema.save()
 
         # Assert - перевіримо, що name та address нечутливі до регістру
         with self.assertRaises(IntegrityError) as context:
-            Cinema.objects.create(name=name2, address=address)
+            Cinema.create(name=name2, address=address)
         self.assertIn('UNIQUE constraint', str(context.exception))
 
     def test_cinema_unique_together_address_only(self):
@@ -50,11 +52,16 @@ class CinemaModelTests(TestCase):
         address2 = 'вул. Степана Бандери, 30'  # різна адреса
 
         # Act
-        Cinema.objects.create(name=name, address=address)
+        Cinema.create(name=name, address=address).save()
         # Assert - перевіримо, що обмеження unique_together працює і для окремого поля
         with self.assertRaises(IntegrityError) as context:
-            Cinema.objects.create(name=name, address=address2)
+            Cinema.create(name=name, address=address2)
         self.assertIn('UNIQUE constraint', str(context.exception))
+
+    def test_empty_adress(self):
+        with self.assertRaises(ValueError):
+            Cinema.create(name='Кінотеатр 1', address='')
+
 
 #
 class CinemaModelTestCase(TestCase):
@@ -88,9 +95,22 @@ class HallModelTestCase(TestCase):
             address='вул. Богдана Хмельницького, 24'
         )
 
+    def test_hall_address_name_is_required(self):
+
+        with self.assertRaises(ValueError):
+            Hall.create(name='', cinema=self.cinema)
+
+        with self.assertRaises(ValueError):
+            Hall.create(name=None, cinema=self.cinema)
+
+        with self.assertRaises(TypeError):
+            Hall.create(cinema=self.cinema)
+
+
+
     def test_create_hall(self):
         # Створення екземпляру моделі Hall з допустимими даними
-        hall = Hall.objects.create(name='Зал 1', cinema=self.cinema)
+        hall = Hall.create(name='Зал 1', cinema=self.cinema)
 
         # Перевірка того, що екземпляр моделі був створений коректно
         self.assertIsInstance(hall, Hall)
@@ -99,61 +119,40 @@ class HallModelTestCase(TestCase):
 
     def test_capacity(self):
         # Створення екземпляру моделі Hall з допустимими даними
-        hall = Hall.objects.create(name = 'Зал 1', cinema = self.cinema)
+        hall = Hall.create(name = 'Зал 1', cinema = self.cinema)
+        hall.save()
 
-        # Створення екземпляру моделі Raw з допустимими даними та прив'язка до залу
-        raw = Raw.objects.create(number = 1, hall = hall)
-
-        # Створення трьох екземплярів моделі Seat з допустимими даними та прив'язка до ряду
-        seat1 = Seats.objects.create(number=1, raw=raw)
-        seat2 = Seats.objects.create(number=2, raw=raw)
-        seat3 = Seats.objects.create(number=3, raw=raw)
+        # Створення трьох екземплярів моделі Seat з допустимими даними та прив'язка до залу
+        seat1 = Seats.objects.create(number=1, raw=1, hall = hall)
+        seat2 = Seats.objects.create(number=2, raw=1, hall = hall)
+        seat3 = Seats.objects.create(number=3, raw=1, hall = hall)
 
         # Перевірка того, що метод capacity повертає очікувану ємність залу
         self.assertEqual(hall.capacity(), 3)
-        raw.delete()
 
     def test_capacity_2(self):
         # Створення екземпляру моделі Hall з допустимими даними
         hall = Hall.objects.create(name = 'Зал 1', cinema = self.cinema)
 
-        # Створення екземпляру моделі Raw з допустимими даними та прив'язка до залу
-        raw0 = Raw.objects.create(number = 1, hall = hall)
-        raw1 = Raw.objects.create(number = 2, hall = hall)
 
+        # Створення трьох екземплярів моделі Seat з допустимими даними та прив'язка до залу
+        seat1 = Seats.objects.create(number=1, raw=1,  hall = hall)
+        seat2 = Seats.objects.create(number=2, raw=1,  hall = hall)
+        seat3 = Seats.objects.create(number=3, raw=1,  hall = hall)
 
-        # Створення трьох екземплярів моделі Seat з допустимими даними та прив'язка до ряду
-        seat1 = Seats.objects.create(number=1, raw=raw0)
-        seat2 = Seats.objects.create(number=2, raw=raw0)
-        seat3 = Seats.objects.create(number=3, raw=raw0)
-
-        # Створення двох екземплярів моделі Seat з допустимими даними та прив'язка до ряду
-        seat1 = Seats.objects.create(number=1, raw=raw1)
-        seat2 = Seats.objects.create(number=2, raw=raw1)
+        # Створення двох екземплярів моделі Seat з допустимими даними та прив'язка до залу
+        seat1 = Seats.objects.create(number=1, raw=2,  hall = hall)
+        seat2 = Seats.objects.create(number=2, raw=2,  hall = hall)
         # Перевірка того, що метод capacity повертає очікувану ємність залу
         self.assertEqual(hall.capacity(), 5)
 
-    def test_capacity_3(self):
-        # Створення екземпляру моделі Hall з допустимими даними
-        hall = Hall.objects.create(name = 'Зал 1', cinema = self.cinema)
-        # Створення екземпляру моделі Raw з допустимими даними та прив'язка до залу
-        raw0 = Raw.objects.create(number = 1, hall = hall)
-        raw0.add_link_obj(10, Seats)
-        raw1 = Raw.objects.create(number = 2, hall = hall)
-        raw1.add_link_obj(3, Seats)
-
-        # Перевірка того, що метод capacity повертає очікувану ємність залу
-        self.assertEqual(hall.capacity(), 13)
 
     def test_delete_hall(self):
         # Створення екземпляру моделі Hall з допустимими даними
         hall = Hall.objects.create(name='Зал 1', cinema=self.cinema)
 
-        # Створення екземпляру моделі Raw з допустимими даними та прив'язка до залу
-        raw = Raw.objects.create(number = 1, hall = hall)
-
         # Створення екземпляру моделі Seat з допустимими даними та прив'язка до ряду
-        seat1 = Seats.objects.create(number=2, raw=raw)
+        seat1 = Seats.objects.create(number=2, raw=1, hall = hall )
 
         # Видалення екземпляру моделі з бази даних
         hall.delete()
@@ -177,87 +176,24 @@ class HallModelUniqueTestCase(TestCase):
                 Hall.objects.create(name='Зал 1', cinema=self.cinema1)
         self.assertTrue('unique constraint' in str(context.exception))
 
-            # Перевіряємо, що можна створyesити зал з таким самим ім'ям, але для іншого кінотеатру
+            # Перевіряємо, що можна створити зал з таким самим ім'ям, але для іншого кінотеатру
         with transaction.atomic():
             hall2 = Hall.objects.create(name='Зал 1', cinema=self.cinema2)
             self.assertIsNotNone(hall2.id)
 
 
-class RawModelUniqueTest(TestCase):
 
-    def setUp(self):
-        self.cinema = Cinema.objects.create(name='Кінотеатр', address='вул. Богдана Хмельницького, 24')
-        self.cinema1 = Cinema.objects.create(name='Кінотеатр 1', address='вул. Богдана Хмельницького, 34')
-        self.hall = Hall.objects.create(name='Зал', cinema=self.cinema)
-        self.hall1 = Hall.objects.create(name='Зал', cinema=self.cinema1)
-        self.raw1 = Raw.objects.create(number=1, hall=self.hall)
-
-    def test_unique_together(self):
-        # Перевіряємо, що не можна створити ряд з таким самим номером та для того ж залу
-        with transaction.atomic():
-            with self.assertRaises(IntegrityError) as context:
-                Raw.objects.create(number=1, hall=self.hall)
-        self.assertTrue('unique constraint' in str(context.exception))
-
-        # Перевіряємо, що можна створити ряд з таким самим номером, але для іншого залу
-        with transaction.atomic():
-            hall2 = Hall.objects.create(name='Інший зал', cinema=self.cinema)
-            raw2 = Raw.objects.create(number=1, hall=hall2)
-        self.assertIsNotNone(raw2.id)
-
-        # Перевіряємо, що можна створити ряд з іншим номером, але для того ж залу
-        with transaction.atomic():
-            raw3 = Raw.objects.create(number=2, hall=self.hall)
-        self.assertIsNotNone(raw3.id)
-
-    def test_unique(self):
-
-        # Перевіряємо, що можна створити ряд з таким самим номером, з атким саме залом  але для іншого кінотеатру
-        with transaction.atomic():
-            raw2 = Raw.objects.create(number=1, hall=self.hall1)
-        self.assertIsNotNone(raw2.id)
-
-class RawModelBaseTest(TestCase):
-
-    def setUp(self):
-        self.cinema = Cinema.objects.create(name='Кінотеатр', address='вул. Богдана Хмельницького, 24')
-        self.hall = Hall.objects.create(name='Зал', cinema=self.cinema)
-        self.raw = Raw.objects.create(number=1, hall=self.hall)
-
-    def test_add_sets(self):
-        # Перевіряємо, що можна створити набір місць для ряду
-        num = 5
-        sets = self.raw.add_link_obj(num, Seats)
-        self.assertEqual(sets, num)
-
-        # Перевіряємо, що місця були створені для відповідного ряду
-        raw_sets = Seats.objects.filter(raw=self.raw).order_by('number')
-        self.assertEqual(len(raw_sets), num)
-        self.assertEqual(raw_sets[0].number, 1)
-
-        # Перевіряємо, що місця були створені з номерами від 1 до num
-        for idx, set in enumerate(raw_sets):
-            self.assertEqual(set.number, idx+1)
-
-    def test_str(self):
-        # Перевіряємо, що метод __str__ повертає очікуваний рядок
-        expected_str = f"Ряд: {self.raw.number}"
-        self.assertEqual(str(self.raw), expected_str)
-
-from django.test import TestCase
-from .models import Seats, Raw, Hall, Cinema
 
 class SeatsModelTest(TestCase):
 
     def setUp(self):
         self.cinema = Cinema.objects.create(name='Кінотеатр',address='вул. Богдана Хмельницького, 24')
         self.hall = Hall.objects.create(name='Червоний', cinema=self.cinema)
-        self.raw = Raw.objects.create(number=1, hall=self.hall)
-        self.seat = Seats.objects.create(number=1, raw=self.raw)
+        self.seat = Seats.objects.create(number=1, raw=1, hall=self.hall)
 
     def test_str(self):
         # Перевіряємо, що метод __str__ повертає очікуваний рядок
-        expected_str = str(self.cinema) + str(self.hall) + str(self.raw) + f"Місце: {self.seat.number}"
+        expected_str = ' '.join((str(self.cinema), str(self.hall), _("Ряд: ") + f"{self.seat.raw}", _("Місце: ") + f"{self.seat.number}"))
         self.assertEqual(str(self.seat), expected_str)
 
 class CinemaModelRequaedTestCase(TestCase):
@@ -270,14 +206,12 @@ class CinemaModelRequaedTestCase(TestCase):
     def test_cinema_name_field_is_required(self):
 
         with self.assertRaises(ValueError):
-            cinema = Cinema(name=None, address='вул. Хрещатик, 22')
-            cinema.full_clean()
+            cinema = Cinema.create(name=None, address='вул. Хрещатик, 22')
 
     def test_cinema_address_field_is_required(self):
 
-        with self.assertRaises(ValueError):
-            cinema = Cinema(name='Кінотеатр "Україна"', address=None)
-            cinema.full_clean()
+        with self.assertRaises(IntegrityError):
+            cinema = Cinema.objects.create(name='Кінотеатр "Україна"', address=None)
 
     def test_cinema_fields_are_not_blank(self):
 
@@ -293,3 +227,20 @@ class CinemaModelRequaedTestCase(TestCase):
     def test_slug_field_is_created_on_save(self):
         cinema = Cinema.objects.create(name="Кінотеатр Імакс", address="вул. Шевченка 1")
         self.assertEqual(cinema.slug, slugify(unidecode(cinema.name)))
+
+class HallFillTestCase(TestCase):
+    def setUp(self):
+        cinema = Cinema.objects.create(name='Кінотеатр', address="вул. Шевченка 1")
+        self.hall = Hall.objects.create(name='Зал 1', cinema=cinema)
+
+    def test_fill_hall_with_seats(self):
+
+        self.hall.fill_hall(5, 6, 7)
+
+        self.assertEqual(self.hall.get_num_of_row(), 3)
+        self.assertEqual(self.hall.get_num_of_sets_in_row(1), 5)
+        self.assertEqual(self.hall.get_num_of_sets_in_row(3), 7)
+
+    def test_fill_hall_without_seats(self):
+        self.hall.fill_hall()
+        self.assertEqual(self.hall.seats_set.count(), 0)

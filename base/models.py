@@ -1,6 +1,7 @@
 from django.db import models
 from django.utils.text import slugify
 from unidecode import unidecode
+from django.utils.translation import gettext_lazy as _
 
 
 # Create your models here.
@@ -19,14 +20,31 @@ class Cinema(models.Model):
 
     class Meta:
         unique_together = ('name', 'address')
-        verbose_name_plural = "Кінотеатр"
-        verbose_name = "Кінотеатри"
+        verbose_name_plural = _("Кінотеатр")
+        verbose_name = _("Кінотеатри")
+
+    @classmethod
+    def create(cls, name, address):
+        if not isinstance(name, str) or not isinstance(address, str) or name == '' or address== '':
+            raise ValueError
+        name = name.lower()
+        address = address.lower()
+
+        # Перевірка наявності дублікатів
+        if name != '' and address != '':
+            for el in Cinema.objects.all():
+                name_inst = str(el.name)
+                address_inst = str(el.address)
+                if name_inst.lower() == name or address_inst.lower() == address:
+                    raise IntegrityError('UNIQUE constraint')
+        cinema = cls(name = name, address = address)
+        return cinema
 
     def __str__(self) -> str:
         """
         :return: найменування кінотеатру та його адресу
         """
-        return f'{self.name} адреса: {self.address}'
+        return f'{self.name}'+ _(' адреса: ') + f'{self.address}'
 
     def save(self, *args, **kwargs):
         "метод створює слаг-атрибут з імені кінотеатру"
@@ -35,33 +53,6 @@ class Cinema(models.Model):
         self.slug = slugify(unidecode(self.name))
         super().save(*args, **kwargs)
 
-    def __init__(self, *args, **kwargs) -> None:
-        """
-        Метолд здійснює перевірку наявності дублікатів кінотеатру про критерію "імені" та "адреси".
-        Перевірка здійснюється незалежно від регістра написання найменування кінотеатру та адреси.
-        Враховуючи, що атрибути об'єкту "Кінотеатр" зберігаються з урахуванням регістру, то здійснюється
-        приведення таких атрибутів та вхідних параметрів до одного регістра - lower().
-        Також, з метою запобігання виникнення рекурсії в коді "for el in Cinema.objects.all():" здійснюється
-        перевірка способу виклику конструктора: "if name != '' and address !='':".
-        :param args:
-        :param kwargs: має містити параметри "name" та "address"
-        """
-
-        name_loc = kwargs.get('name', '')
-        address_loc = kwargs.get('address', '')
-        if not isinstance(name_loc, str) or not isinstance(address_loc, str):
-            raise ValueError
-        name_loc = name_loc.lower()
-        address_loc = address_loc.lower()
-
-        # Перевірка наявності дублікатів
-        if name_loc != '' and address_loc !='':
-            for el in Cinema.objects.all():
-                name_inst=str(el.name)
-                address_inst=str(el.address)
-                if name_inst.lower() == name_loc or address_inst.lower() == address_loc:
-                    raise IntegrityError('UNIQUE constraint')
-        super().__init__(*args, **kwargs)
 
 
 
@@ -77,73 +68,66 @@ class Hall(models.Model):
     name = models.CharField(max_length=16, null=False, blank=False, db_index=True)
     cinema = models.ForeignKey(Cinema, on_delete=models.CASCADE)
 
+
     class Meta:
         unique_together = ('name', 'cinema')
-        verbose_name_plural = "Зал"
-        verbose_name = "Зали"
+        verbose_name_plural = _("Зал")
+        verbose_name = _("Зали")
+
+    @classmethod
+    def create(cls, cinema, name):
+        if name == '' or  (name is  None) or (cinema is None) or cinema=='':
+            raise ValueError(_('Параметри cinema та/або name повинні мати значення'))
+        hall = cls(cinema=cinema, name=name)
+        return hall
+
+    def __str__(self):
+        return _('Зал:') + f'{self.name}'
 
     def capacity(self):
         "Метод обчислює місткість кінозалу"
-        capacity = 0
-        for raw in self.raw_set.all():
-            for seat in raw.seats_set.all():
-                capacity += 1
-        return capacity
+        # capacity = 0
+        # for raw in self.raw_set.all():
+        #     for seat in raw.seats_set.all():
+        #         capacity += 1
+        # return capacity
+        return Seats.objects.filter(hall=self).count()
 
-    def __str__(self):
-        return f'Зал: {self.name}'
+    def fill_hall(self, *args):
+        for num_row, number_of_seat_in_row in enumerate(args):
+            for number_seat in range(1, number_of_seat_in_row + 1):
+                seat = Seats.objects.create(number=number_seat, raw=num_row + 1, hall = self)
+                seat.save()
 
+    def get_num_of_row(self):
+        return Seats.objects.filter(hall = self).distinct('raw').count()
 
-
-class Raw(models.Model):
-    """
-    Клас реалізує сутність категорії "ряд в залі кінотеатру"
-    Клас має такі атрибути:
-    number: номер ряду.
-    hall: зал, у якому розташований ряд.
-    Параметром unique_together = ('number', 'hall') забезпечується унікальність номера ряду у залі кінотеатру
-    """
-    number = models.PositiveIntegerField()
-    hall = models.ForeignKey(Hall, on_delete=models.CASCADE)
-
-    class Meta:
-        ordering = ["number"]
-        unique_together = ('number', 'hall')
-        verbose_name_plural = "Ряд"
-        verbose_name = "Ряди"
-
-    def __str__(self):
-        return f"Ряд: {self.number}"
-
-
-
-    def add_link_obj(self, num, obj):
-        """
-        Метод створює кількість num об'єктів класу obj, які пов'язані з рядом self.
-        :param num: кількість об'єктів, які необхідно створити.
-        :param obj: клас об'єкту, який створюється
-        :return: у випадку вдалого відпрацювання повертає кількість створених об'єктів.
-        """
-        for idx in range(1, num + 1):
-            obj.objects.create(number = idx, raw = self)
-        return num
+    def get_num_of_sets_in_row(self, num_row):
+        return Seats.objects.filter(hall=self, raw=num_row).count()
 
 
 
 class Seats(models.Model):
+    """
+    Клас реалізує сутність категорії "Місце".
+    Клас має такі атрибути:
+        number - номер
+        raw - ряд
+
+    """
     number = models.PositiveIntegerField()
-    raw = models.ForeignKey(Raw, on_delete=models.CASCADE)
+    raw = models.PositiveIntegerField()
+    hall = models.ForeignKey(Hall, on_delete=models.CASCADE)
+    # raw = models.ForeignKey(Raw, on_delete=models.CASCADE)
 
     class Meta:
-        unique_together = ('number', 'raw')
-        verbose_name_plural = "Місце"
-        verbose_name = "Місця"
+        unique_together = ('number', 'raw', 'hall')
+        verbose_name_plural = _("Місце")
+        verbose_name = _("Місця")
 
     def __str__(self):
-        res = str(self.raw.hall.cinema)
-        res += str(self.raw.hall)
-        res += str(self.raw)
-        res += f"Місце: {self.number}"
+        res = ' '.join((str(self.hall.cinema), str(self.hall), _("Ряд: ") + f"{self.raw}",
+                       _("Місце: ") + f"{self.number}"))
         return res
 
 # class PriceZone(models.Model):
